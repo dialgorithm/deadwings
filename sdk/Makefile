@@ -9,7 +9,7 @@ WONDERFUL_TOOLCHAIN	?= /opt/wonderful
 # User config
 # ===========
 
-NAME		:= template_combined
+NAME		:= deadwings
 
 GAME_TITLE	:= Combined ARM7+ARM9 template
 GAME_SUBTITLE	:= Built with BlocksDS

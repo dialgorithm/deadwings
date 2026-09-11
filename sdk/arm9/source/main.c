@@ -1,4 +1,5 @@
 #include <nds.h>
+#include <string.h>
 #include <math.h>
 #include <maxmod9.h>
 
@@ -18,7 +19,7 @@ typedef struct  {
     s16 x;
     s16 y;
     s16 angle;
-    a16 speed;
+    s16 speed;
 } Player;
 
 static Player player;
@@ -26,35 +27,11 @@ static Player player;
 static int bg_bg0, bg_bg1;
 static u16 *bg0_map
 static u16 *bg1_map;
-static u16 map_data[ 32 * 32 ];
-
-static void initMap(void) {
-    
-    for (int y = 0; y < 32; y++) {
-
-        for (int x = 0; x < 32; x++) {
-
-            int dist = x * x + y * y;
-
-            if (dist < 400) {
-                map_data[y * 32 + x] = 0x0010;
-            } else if (dist < 900) {
-                map_data[y * 32 + x] = 0x0210;
-            } else if (dist < 1600) {
-                map_data[y * 32 + x] = 0x0310;
-            } else {
-                map_data[y * 32 + x] = 0x0400;
-            }
-
-        }
-
-    }
-
-}
+static u16 *plane_vram;
 
 static void initGraphics(void) {
 
-    videoSetMode(MODE_0_2d | DISPLAY_BG0_ACTIVE | DISPLAY_BG1_ACTIVE | DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D_LAYOUT)
+    videoSetMode(MODE_0_2D | DISPLAY_BG0_ACTIVE | DISPLAY_BG1_ACTIVE | DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D_LAYOUT)
 
     vramSetBankA(VRAM_A_MAIN_BG_0x06000000);
     vramSetBankB(VRAM_B_MAIN_SPRITE);
@@ -70,7 +47,7 @@ static void initGraphics(void) {
         for (int x = 0; x < 32; x++) {
 
             bg0_map[y * 32 + x] = (x + y) & 0xFF;
-            bg1_map[y * 32 + x] = (x + y * 2) & 0xFF
+            bg1_map[y * 32 + x] = (x + y * 2) & 0xFF;
 
 
         }
@@ -86,34 +63,26 @@ static void initGraphics(void) {
     player.y = MAP_HEIGHT / 2;
 
     player.angle = 0;
-    player.speed - 0;
+    player.speed = 0;
 
 }
 
 static void loadPlaneTexture(void) {
 
-    u16 *vram_sprite = oamAllocateGfx(&oamMain, SpriteSize_64x64, SpriteColorFormat_Bmp);
-    for (int i = 0; i < 8192; i++) {
-        vram_sprite[i] = planeBitmap{i};
-    }
+    u16 *vram = oamAllocateGfx(&oamMain, SpriteSize_64x64, SpriteColorFormat_Bmp);
+    memcpy(vram, planebitmap, 8192);
+    plane_vram = vram;
 
 }
 
 static void initPlayerSprite(void) {
 
-    oamSet(&oamMain, 0, 
-        player.x - PLAYER_SIZE / 2, 
-        player.y - PLAYER_SIZE / 2,
+    oamSet(&oamMain, 0,
+        SCREEN_WIDTH / 2 - PLAYER_SIZE, SCREEN_HEIGHT / 2 - PLAYER_SIZE
         0, 0, 
-        SpriteSize_64x64, SpriteColorFormat_Bmp, 
-        oamGetGfxPtr(&oamMain, 0),
-        0,
-        false,
-        false,
-        false,
-        false,
-        false
-    );
+        SpriteSize_64x64, SpriteColorFormat_Bmp,
+        plane_vram,
+        0, false, false, false, false, false);
 
 }
 
@@ -124,21 +93,21 @@ static void updatePlayer(void) {
     uint16_t keys = keysHeld();
     uint16_t keys_down = keysDown();
 
-    const s16 MAX_SPEED = 256;
+    const s16 MAX_SPEED = 128;
     const s16 FRICTION = 256;
-    const s16 TURN_SPEED = 4;
+    const s16 TURN_SPEED = 3;
 
-    s16 turnInput = 0;
+    if (keys & KEY_LEFT) {
 
-    if (keys & KEY_LEFT) turnInput -= 1;
-    if (keys & KEY_RIGHT) turnInput +=1;
+        player.angle -= TURN_SPEED;
+        if (player.angle < 0) player.angle += 360;
+     
+    }
 
-    if (turnInput != 0) {
+    if (keys & KEY_RIGHT) {
 
-        player.angle += turnInput * TURN_SPEED;
-        
-        if (player.angle < 0) player.angle += 360l
-        if (player.angle >= 360) player.angle -= 360
+        player.angle += TURN_SPEED;
+        if (player.angle >= 360) player.angle -= 360;
 
     }
 
@@ -159,39 +128,31 @@ static void updatePlayer(void) {
 
     }
 
-    float red = player.angle * (float)M_PI / 180.0f;
+    float rad = player.angle * (float)M_PI / 180.0f;
     float sin_a = sinf(rad);
     float cos_a = cosf(rad);
 
-    player.x += (s16)(sin_a * player.speed / 256);
-    player.y -= (s16)(cos_a * player.speed / 256);
+    player.x += (s16)(sin_a * player.speed);
+    player.y -= (s16)(cos_a * player.speed);
 
-    if (player.x < PLAYER_SIZE) player.x = PLAYER_SIZE;
-    if (player.x > MAP_WIDTH - PLAYER_SIZE) player.x = MAP_WIDTH - PLAYER_SIZE;
-    if (player.y < PLAYER_SIZE) player.y = PLAYER_SIZE;
-    if (player.y > MAP_HEIGHT - PLAYER_SIZE) player.y = MAP_HEIGHT - PLAYER_SIZE;
+    if (player.x < 16) player.x = 16;
+    if (player.x > MAP_WIDTH - 16) player.x = MAP_WIDTH - 16;
+    if (player.y < 16) player.y = 16;
+    if (player.y > MAP_HEIGHT - 16) player.y = MAP_HEIGHT - 16;
 
     int scroll_x = player.x - SCREEN_WIDTH / 2;
     int scroll_y = player.y - SCREEN_HEIGHT / 2;
 
     bgSetScroll(bg_bg0, -scroll_x, -scroll_y);
-    bgSetScroll(bg_bg1, -scroll_x * 2/3, -scroll_y * 2/3);
+    bgSetScroll(bg_bg1, -scroll_x / 2, -scroll_y / 2);
 
-    oamSet(&oamMain, 
-        0,
-        player.x - SCREEN_WIDTH / 2 - PLAYER_SIZE / 2,
-        player.y - SCREEN_WIDTH / 2 - PLAYER_SIZE / 2,
-        0,
-        0,
-        SpriteSize_64x64,
-        SpriteColorFormat_Bmp,
-        oamGetGfxPtr(&oamMain, 0),
-        0,
-        false,
-        false,
-        false, 
-        false,
-        false,
+    oamSet(&oamMain, 0,
+        (SCREEN_HEIGHT - 64) / 2,
+        (SCREEN_WIDTH - 64) / 2,
+        0, 0, 
+        SpriteSize_64x64, SpriteColorFormat_Bmp,
+        plane_vram, 0,
+        false, false, false, false, false
     );
 
     oamRotateScale(&oamMain,
